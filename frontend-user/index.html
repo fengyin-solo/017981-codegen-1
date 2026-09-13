@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>古琴音频分析软件</title>
+  <link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <h1>古琴音频分析软件</h1>
+      <p class="subtitle">专业的音频频谱分析工具</p>
+    </header>
+
+    <main class="main-content">
+      <!-- 左侧控制面板 -->
+      <aside class="control-panel">
+        <section class="panel-section">
+          <h2>音频上传</h2>
+          <div class="upload-area" id="uploadArea">
+            <input type="file" id="audioInput" accept="audio/*" hidden>
+            <div class="upload-placeholder">
+              <span class="upload-icon">🎵</span>
+              <p>点击或拖拽上传音频文件</p>
+              <p class="upload-hint">支持 MP3, WAV, OGG 等格式</p>
+            </div>
+          </div>
+          <div class="file-info" id="fileInfo" style="display: none;">
+            <span class="file-name" id="fileName"></span>
+            <button class="btn-remove" id="removeFile">✕</button>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2>音频播放</h2>
+          <div class="audio-player" id="audioPlayerSection" style="display: none;">
+            <audio id="audioPlayer" controls></audio>
+            <div class="duration-info">
+              <span>总时长: <strong id="totalDuration">0.000</strong> 秒</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2>区间选择</h2>
+          <div class="time-display">
+            <div class="time-item">
+              <span class="time-label">起始</span>
+              <div class="time-value-wrapper">
+                <input type="number" id="startTime" min="0" step="1" value="0" class="time-input">
+                <span class="time-unit">ms</span>
+              </div>
+            </div>
+            <div class="time-separator">
+              <span class="separator-line"></span>
+              <span class="separator-icon">↔</span>
+              <span class="separator-line"></span>
+            </div>
+            <div class="time-item">
+              <span class="time-label">结束</span>
+              <div class="time-value-wrapper">
+                <input type="number" id="endTime" min="0" step="1" value="0" class="time-input">
+                <span class="time-unit">ms</span>
+              </div>
+            </div>
+          </div>
+          <div class="range-slider-container">
+            <div class="range-track" id="rangeTrack">
+              <div class="range-selected" id="rangeSelected"></div>
+              <div class="range-handle start" id="handleStart" title="起始时间"></div>
+              <div class="range-handle end" id="handleEnd" title="结束时间"></div>
+            </div>
+          </div>
+          <div class="duration-badge">
+            <span class="duration-icon">⏱</span>
+            <span>选中 <strong id="selectedDuration">0.000</strong> 秒</span>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2>分析参数</h2>
+          <div class="param-group">
+            <label for="fftSize">FFT 精度</label>
+            <select id="fftSize" class="param-select">
+              <option value="2048">2048 (标准)</option>
+              <option value="4096">4096 (高精度)</option>
+              <option value="8192" selected>8192 (超高精度)</option>
+              <option value="16384">16384 (极高精度)</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <button class="btn-analyze" id="analyzeBtn" disabled>
+            <span class="btn-icon">📊</span>
+            分析音频
+          </button>
+        </section>
+
+        <section class="panel-section" id="fundamentalInfo" style="display: none;">
+          <h2>基频信息</h2>
+          <div class="fundamental-display">
+            <div class="freq-value">
+              <span class="label">检测到的基频</span>
+              <span class="value" id="fundamentalFreq">--</span>
+              <span class="unit">Hz</span>
+            </div>
+            <div class="harmonics-list" id="harmonicsList"></div>
+          </div>
+        </section>
+
+        <section class="panel-section" id="saveRecordSection" style="display: none;">
+          <h2>保存记录</h2>
+          <div class="save-record-form">
+            <div class="form-group">
+              <label for="recordName">记录名称</label>
+              <input type="text" id="recordName" class="form-input" placeholder="输入记录名称">
+            </div>
+            <div class="form-group">
+              <label for="recordNote">备注（可选）</label>
+              <textarea id="recordNote" class="form-textarea" placeholder="添加备注信息"></textarea>
+            </div>
+            <button class="btn-save" id="saveRecordBtn">
+              <span class="btn-icon">💾</span>
+              保存分析记录
+            </button>
+          </div>
+        </section>
+
+        <section class="panel-section records-panel">
+          <div class="records-header">
+            <h2>历史记录</h2>
+            <button class="btn-toggle-records" id="toggleRecordsBtn" title="展开/收起">▼</button>
+          </div>
+          <div class="records-content" id="recordsContent">
+            <div class="records-list" id="recordsList"></div>
+            <div class="records-empty" id="recordsEmpty">
+              <span class="empty-icon">📋</span>
+              <p>暂无保存的记录</p>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <!-- 右侧图表区域 -->
+      <div class="chart-area">
+        <div class="chart-container" id="chartContainer" style="display: none;">
+          <!-- 波形图 -->
+          <section class="chart-section waveform-section">
+            <h3>波形图</h3>
+            <div class="chart-wrapper">
+              <canvas id="waveformChart"></canvas>
+            </div>
+          </section>
+
+          <!-- 频谱图 -->
+          <section class="chart-section spectrum-section">
+            <h3>频谱图 (基频与倍频)</h3>
+            <div class="chart-wrapper">
+              <canvas id="spectrumChart"></canvas>
+            </div>
+          </section>
+
+          <!-- 热力图 -->
+          <section class="chart-section heatmap-section">
+            <h3>声强变化热力图</h3>
+            <div class="chart-wrapper heatmap-wrapper">
+              <canvas id="heatmapChart"></canvas>
+              <div class="heatmap-legend">
+                <span class="legend-label">弱</span>
+                <div class="legend-gradient"></div>
+                <span class="legend-label">强</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- 频率区域分析 -->
+          <section class="chart-section frequency-bands-section">
+            <h3>频率区域分析</h3>
+            <div class="frequency-bands">
+              <div class="band-chart">
+                <h4>低频区 (基频~4倍频)</h4>
+                <div class="chart-wrapper">
+                  <canvas id="lowFreqChart"></canvas>
+                </div>
+              </div>
+              <div class="band-chart">
+                <h4>中频区 (5倍频~8倍频)</h4>
+                <div class="chart-wrapper">
+                  <canvas id="midFreqChart"></canvas>
+                </div>
+              </div>
+              <div class="band-chart">
+                <h4>高频区 (9倍频~13倍频)</h4>
+                <div class="chart-wrapper">
+                  <canvas id="highFreqChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- 空状态 -->
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">🎶</div>
+          <h2>欢迎使用古琴音频分析软件</h2>
+          <p>请上传音频文件，选择分析区间，然后点击"分析音频"按钮</p>
+          <div class="steps">
+            <div class="step">
+              <span class="step-number">1</span>
+              <span class="step-text">上传音频文件</span>
+            </div>
+            <div class="step">
+              <span class="step-number">2</span>
+              <span class="step-text">选择分析区间</span>
+            </div>
+            <div class="step">
+              <span class="step-number">3</span>
+              <span class="step-text">点击分析按钮</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <p>© 2024 古琴音频分析软件 - 专为斫琴师设计</p>
+    </footer>
+  </div>
+
+  <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+    <div class="loading-spinner"></div>
+    <p>正在分析音频...</p>
+  </div>
+
+  <div class="modal-overlay" id="recordDetailModal" style="display: none;">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modalTitle">记录详情</h3>
+        <button class="btn-close-modal" id="closeModalBtn">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer">
+        <button class="btn-modal btn-secondary" id="applyRecordBtn">
+          <span class="btn-icon">📊</span>
+          应用此记录
+        </button>
+        <button class="btn-modal btn-danger" id="deleteRecordBtn">
+          <span class="btn-icon">🗑️</span>
+          删除记录
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

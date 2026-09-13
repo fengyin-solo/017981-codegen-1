@@ -1,0 +1,18 @@
+{
+  "name": "guqin-audio-analyzer",
+  "version": "1.0.0",
+  "description": "古琴音频分析软件 - 用于分析音频的基频、倍频和声强变化",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.1",
+    "chartjs-plugin-annotation": "^3.0.1"
+  },
+  "devDependencies": {
+    "vite": "^5.0.10"
+  }
+}
