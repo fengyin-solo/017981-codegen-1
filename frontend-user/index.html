@@ -91,6 +91,56 @@
           </div>
         </section>
 
+        <section class="panel-section criteria-panel" id="criteriaPanel">
+          <div class="criteria-panel-header">
+            <h2>音色判定口径</h2>
+            <button class="btn-reset-criteria" id="resetCriteriaBtn" title="恢复默认口径">恢复默认</button>
+          </div>
+          <div class="criteria-grid">
+            <div class="criteria-field">
+              <label for="criteriaPitchPass">音准合格(音分)</label>
+              <input type="number" id="criteriaPitchPass" min="1" step="1">
+            </div>
+            <div class="criteria-field">
+              <label for="criteriaPitchDoubt">音准存疑(音分)</label>
+              <input type="number" id="criteriaPitchDoubt" min="1" step="1">
+            </div>
+            <div class="criteria-field">
+              <label for="criteriaDecayPassMin">衰减合格下限</label>
+              <input type="number" id="criteriaDecayPassMin" step="1">
+            </div>
+            <div class="criteria-field">
+              <label for="criteriaDecayPassMax">衰减合格上限</label>
+              <input type="number" id="criteriaDecayPassMax" step="1">
+            </div>
+            <div class="criteria-field">
+              <label for="criteriaDecayDoubtMin">衰减存疑下限</label>
+              <input type="number" id="criteriaDecayDoubtMin" step="1">
+            </div>
+            <div class="criteria-field">
+              <label for="criteriaDecayDoubtMax">衰减存疑上限</label>
+              <input type="number" id="criteriaDecayDoubtMax" step="1">
+            </div>
+            <div class="criteria-field">
+              <label for="criteriaMinHarmonics">最少可测谐波(3~8)</label>
+              <input type="number" id="criteriaMinHarmonics" min="1" max="6" step="1">
+            </div>
+            <div class="criteria-field">
+              <label for="criteriaAgreement">互证阈值(音分)</label>
+              <input type="number" id="criteriaAgreement" min="1" step="1">
+            </div>
+            <div class="criteria-field">
+              <label for="criteriaNoiseFloor">可测门槛(-dB)</label>
+              <input type="number" id="criteriaNoiseFloor" min="10" step="1">
+            </div>
+            <div class="criteria-field">
+              <label for="criteriaMinRms">最低电平RMS</label>
+              <input type="number" id="criteriaMinRms" min="0" step="0.001">
+            </div>
+          </div>
+          <p class="criteria-hint">口径自动保存，更换音频文件后原样保留；修改后会用新口径重判所有对比区间。</p>
+        </section>
+
         <section class="panel-section">
           <button class="btn-analyze" id="analyzeBtn" disabled>
             <span class="btn-icon">📊</span>
@@ -145,6 +195,42 @@
 
       <!-- 右侧图表区域 -->
       <div class="chart-area">
+        <!-- 音色判定结果 -->
+        <section class="verdict-card" id="verdictCard" style="display: none;">
+          <div class="verdict-card-head">
+            <h3>音色判定</h3>
+            <span class="verdict-badge-large tier-pass" id="verdictBadge">合格</span>
+          </div>
+          <div class="verdict-card-body" id="verdictBody"></div>
+          <div class="verdict-criteria" id="verdictCriteria"></div>
+        </section>
+
+        <!-- 多区间对比 -->
+        <section class="compare-section" id="compareSection" style="display: none;">
+          <div class="compare-head">
+            <h3>多区间音色对比 <span class="compare-count" id="compareCount">0</span></h3>
+            <button class="btn-clear-compare" id="clearCompareBtn">清空对比</button>
+          </div>
+          <div class="compare-table-wrapper">
+            <table class="compare-table">
+              <thead>
+                <tr>
+                  <th>区间</th>
+                  <th>综合判定</th>
+                  <th>自相关</th>
+                  <th>峰值检测</th>
+                  <th>音准偏差</th>
+                  <th>谐波衰减</th>
+                  <th>两路基频</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="compareBody"></tbody>
+            </table>
+          </div>
+          <p class="compare-footnote" id="compareFootnote"></p>
+        </section>
+
         <div class="chart-container" id="chartContainer" style="display: none;">
           <!-- 波形图 -->
           <section class="chart-section waveform-section">

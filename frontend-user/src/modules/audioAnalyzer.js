@@ -39,9 +39,10 @@ export class AudioAnalyzer {
       }
     }
 
-    // 检测基频
-    const fundamentalFreq = this.detectFundamentalFrequency(audioData, sampleRate, frequencies, magnitudes);
-    
+    // 检测基频（同时保留自相关法、峰值检测两路结果，供音色判定互证）
+    const detection = this.detectFundamentalFrequency(audioData, sampleRate, frequencies, magnitudes);
+    const fundamentalFreq = detection.freq;
+
     // 计算倍频 (最大13倍)
     const harmonics = this.calculateHarmonics(fundamentalFreq, 13);
     
@@ -60,6 +61,10 @@ export class AudioAnalyzer {
 
     return {
       fundamentalFreq,
+      autocorrFreq: detection.autocorrFreq,
+      peakFreq: detection.peakFreq,
+      rms: this.calculateRMS(audioData),
+      frequencyResolution,
       harmonics,
       frequencies: filteredData.frequencies,
       magnitudes: filteredData.magnitudes,
@@ -70,6 +75,18 @@ export class AudioAnalyzer {
       rawFrequencies: frequencies,
       rawMagnitudes: magnitudes
     };
+  }
+
+  /**
+   * 计算区间 RMS 电平（用于判定数据是否过弱）
+   */
+  calculateRMS(audioData) {
+    if (!audioData || audioData.length === 0) return 0;
+    let sum = 0;
+    for (let i = 0; i < audioData.length; i++) {
+      sum += audioData[i] * audioData[i];
+    }
+    return Math.sqrt(sum / audioData.length);
   }
 
   /**
@@ -150,79 +167,152 @@ export class AudioAnalyzer {
 
   /**
    * 检测基频 - 使用自相关法和峰值检测
+   * @returns {{freq:number, autocorrFreq:number, peakFreq:number, autocorrConfidence:number}}
+   * freq 为综合两路后的最终基频；两路原始结果一并返回，供音色判定互证
    */
   detectFundamentalFrequency(audioData, sampleRate, frequencies, magnitudes) {
     // 方法1: 自相关法
-    const autocorrFreq = this.autocorrelation(audioData, sampleRate);
-    
+    const { freq: autocorrFreq, confidence: autocorrConfidence } = this.autocorrelation(audioData, sampleRate);
+
     // 方法2: 峰值检测法
     const peakFreq = this.findDominantPeak(frequencies, magnitudes);
-    
+
     // 综合判断 - 优先使用自相关法的结果，因为它对古琴这类乐器更准确
     let fundamentalFreq = autocorrFreq;
-    
+
     // 如果自相关法结果不合理，使用峰值检测
     if (fundamentalFreq < 50 || fundamentalFreq > 2000) {
       fundamentalFreq = peakFreq;
     }
-    
+
     // 验证：检查是否可能是倍频被误检为基频
-    const possibleFundamental = this.verifyFundamental(fundamentalFreq, frequencies, magnitudes);
-    
+    let possibleFundamental = this.verifyFundamental(fundamentalFreq, frequencies, magnitudes);
+
+    // 两路都未检出有效基频时给一个保守占位值，保证后续图表流程不中断
+    if (!Number.isFinite(possibleFundamental) || possibleFundamental <= 0) {
+      possibleFundamental = 65.4; // C2，古琴最低音附近
+    }
+
     logger.info('基频检测结果', { autocorrFreq, peakFreq, final: possibleFundamental });
-    
-    return possibleFundamental;
+
+    return {
+      freq: possibleFundamental,
+      autocorrFreq,
+      peakFreq,
+      autocorrConfidence
+    };
   }
 
   /**
    * 自相关法检测基频
+   * @returns {{freq:number, confidence:number}} confidence 为归一化自相关峰值
    */
   autocorrelation(audioData, sampleRate) {
     const minPeriod = Math.floor(sampleRate / 2000); // 最高频率 2000Hz
     const maxPeriod = Math.floor(sampleRate / 50);   // 最低频率 50Hz
     const dataLength = Math.min(audioData.length, sampleRate); // 最多分析1秒
-    
+
+    let energy = 0;
+    for (let i = 0; i < dataLength; i++) {
+      energy += audioData[i] * audioData[i];
+    }
+
     let maxCorr = 0;
     let bestPeriod = minPeriod;
-    
+
     for (let period = minPeriod; period < maxPeriod && period < dataLength / 2; period++) {
       let corr = 0;
       let count = 0;
-      
+
       for (let i = 0; i < dataLength - period; i++) {
         corr += audioData[i] * audioData[i + period];
         count++;
       }
-      
+
       corr /= count;
-      
+
       if (corr > maxCorr) {
         maxCorr = corr;
         bestPeriod = period;
       }
     }
-    
-    return sampleRate / bestPeriod;
+
+    // 归一化置信度（0~1），过低表示周期性弱
+    const confidence = energy > 0 ? Math.max(0, Math.min(1, maxCorr / (energy / dataLength))) : 0;
+
+    return { freq: sampleRate / bestPeriod, confidence };
   }
 
   /**
    * 峰值检测法
+   * 不再直接取最强峰（古琴高次谐波常强于基频，会把谐波误当基频），
+   * 而是在基频候选范围内对每个谱峰计算"谐波支持度"：
+   * 若其 2~8 倍频位置也存在显著能量，则更可能是真正的基频。
    */
   findDominantPeak(frequencies, magnitudes) {
-    let maxMag = 0;
-    let peakFreq = 100;
-    
-    // 在合理的基频范围内寻找最大峰值 (古琴基频通常在 60-500Hz)
-    for (let i = 0; i < frequencies.length; i++) {
+    // 收集合理基频范围内的局部峰
+    const peaks = [];
+    let globalMax = 0;
+    for (let i = 1; i < frequencies.length - 1; i++) {
       if (frequencies[i] >= 50 && frequencies[i] <= 1000) {
-        if (magnitudes[i] > maxMag) {
-          maxMag = magnitudes[i];
-          peakFreq = frequencies[i];
+        if (magnitudes[i] > globalMax) globalMax = magnitudes[i];
+        if (magnitudes[i] >= magnitudes[i - 1] && magnitudes[i] >= magnitudes[i + 1] && magnitudes[i] > 0) {
+          peaks.push({ freq: frequencies[i], mag: magnitudes[i] });
         }
       }
     }
-    
-    return peakFreq;
+    if (peaks.length === 0 || globalMax === 0) return 0;
+
+    let best = null;
+    let bestScore = -Infinity;
+    // 频率分辨率：谐波匹配只接受落在分辨率附近的命中，避免杂峰蹭支持度
+    const resolution = frequencies.length > 1 ? frequencies[1] - frequencies[0] : 5;
+    for (const cand of peaks) {
+      // 整数倍频处的能量支持（计显著命中数，而非能量总和，避免高次峰刷分）
+      let support = 0;
+      for (let n = 2; n <= 8; n++) {
+        const target = cand.freq * n;
+        // 容差取频率分辨率与目标频率 1% 的较小值，最多不超过半音
+        const tol = Math.min(Math.max(2 * resolution, target * 0.01), target * 0.03);
+        let localMax = 0;
+        for (let i = 0; i < frequencies.length; i++) {
+          const f = frequencies[i];
+          if (f < target - tol) continue;
+          if (f > target + tol) break;
+          if (magnitudes[i] > localMax) localMax = magnitudes[i];
+        }
+        if (localMax > 0.15 * globalMax) support += 1;
+      }
+
+      // 若候选的低次分谐波（f/2、f/3）处也有显著能量，它更可能是高次谐波而非基频
+      let subPenalty = 0;
+      for (const div of [2, 3]) {
+        const sub = cand.freq / div;
+        if (sub < 50) continue;
+        const tol = sub * 0.03;
+        let subMax = 0;
+        for (let i = 0; i < frequencies.length; i++) {
+          const f = frequencies[i];
+          if (f < sub - tol) continue;
+          if (f > sub + tol) break;
+          if (magnitudes[i] > subMax) subMax = magnitudes[i];
+        }
+        if (subMax > 0.15 * globalMax) subPenalty += 1;
+      }
+
+      const selfScore = cand.mag / globalMax;
+      // 要求基频候选自身有可观测能量，极弱峰不与强峰同台竞争
+      const selfGate = selfScore < 0.03 ? -2 : 0;
+      // 低频小幅优先：古琴基频多在 60~500Hz，频率越高越是谐波的可能性越大
+      const lowBias = 1 - (cand.freq - 50) / 950;
+      const score = support * 1.0 + lowBias * 0.35 + selfScore * 0.15 - subPenalty * 1.2 + selfGate;
+      if (score > bestScore) {
+        bestScore = score;
+        best = cand;
+      }
+    }
+
+    return best ? best.freq : 0;
   }
 
   /**

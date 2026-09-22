@@ -2,6 +2,8 @@ import { AudioAnalyzer } from './modules/audioAnalyzer.js';
 import { ChartManager } from './modules/chartManager.js';
 import { UIController } from './modules/uiController.js';
 import { RecordManager } from './modules/recordManager.js';
+import { TimbreJudge } from './modules/timbreJudge.js';
+import { VerdictView } from './modules/verdictView.js';
 import { Logger } from './utils/logger.js';
 
 // 初始化日志
@@ -14,11 +16,17 @@ class App {
     this.chartManager = null;
     this.uiController = null;
     this.recordManager = null;
+    this.timbreJudge = null;
+    this.verdictView = null;
     this.audioBuffer = null;
     this.audioContext = null;
     this.currentAnalysisResult = null;
     this.currentFileName = '';
     this.selectedRecordId = null;
+    // 同一段音频多个区间依次判定，并排进对比列表
+    this.segments = [];
+    this.activeSegmentId = null;
+    this.segmentSeq = 0;
   }
 
   async init() {
@@ -33,9 +41,15 @@ class App {
       this.chartManager = new ChartManager();
       this.uiController = new UIController();
       this.recordManager = new RecordManager();
+      this.timbreJudge = new TimbreJudge();
+      this.verdictView = new VerdictView();
 
       // 绑定事件
       this.bindEvents();
+      this.bindCriteriaEvents();
+
+      // 判定口径面板按持久化值回填（不依赖当前是否已加载文件）
+      this.fillCriteriaForm();
 
       // 加载历史记录列表
       this.updateRecordsList();
@@ -134,6 +148,9 @@ class App {
 
       this.updateRangeSlider();
 
+      // 换一个文件重新进入：清空多区间对比结果，但判定口径原样保留
+      this.resetSegments();
+
       // 启用分析按钮
       document.getElementById('analyzeBtn').disabled = false;
 
@@ -150,6 +167,7 @@ class App {
     this.audioBuffer = null;
     this.currentAnalysisResult = null;
     this.currentFileName = '';
+    this.resetSegments();
     document.getElementById('audioInput').value = '';
     document.getElementById('fileInfo').style.display = 'none';
     document.getElementById('uploadArea').style.display = 'block';
@@ -159,11 +177,22 @@ class App {
     document.getElementById('emptyState').style.display = 'flex';
     document.getElementById('fundamentalInfo').style.display = 'none';
     document.getElementById('saveRecordSection').style.display = 'none';
-    
+
     // 清除图表
     this.chartManager.clearAllCharts();
 
     logger.info('音频文件已移除');
+  }
+
+  /**
+   * 清空多区间对比列表（判定口径不在此重置，换文件后保持原样）
+   */
+  resetSegments() {
+    this.segments = [];
+    this.activeSegmentId = null;
+    this.currentAnalysisResult = null;
+    this.verdictView.hideVerdictCard();
+    this.verdictView.renderComparisonTable([], null);
   }
 
   initRangeSlider() {
@@ -269,10 +298,21 @@ class App {
       // 分析音频
       const analysisResult = await this.audioAnalyzer.analyze(selectedData, this.audioBuffer.sampleRate, fftSize);
 
-      logger.info('音频分析完成', { 
+      logger.info('音频分析完成', {
         fundamentalFreq: analysisResult.fundamentalFreq,
-        harmonicsCount: analysisResult.harmonics.length 
+        harmonicsCount: analysisResult.harmonics.length
       });
+
+      // 按谐波说话的音色判定（自相关法 + 峰值检测互证）
+      const verdict = this.timbreJudge.judge({
+        autocorrFreq: analysisResult.autocorrFreq,
+        peakFreq: analysisResult.peakFreq,
+        frequencies: analysisResult.rawFrequencies,
+        magnitudes: analysisResult.rawMagnitudes,
+        resolution: analysisResult.frequencyResolution,
+        rms: analysisResult.rms
+      });
+      analysisResult.verdict = verdict;
 
       // 保存当前分析结果
       this.currentAnalysisResult = analysisResult;
@@ -283,14 +323,23 @@ class App {
       // 更新基频信息
       this.updateFundamentalInfo(analysisResult);
 
-      // 显示图表区域
-      document.getElementById('chartContainer').style.display = 'flex';
-      document.getElementById('emptyState').style.display = 'none';
+      // 该区间进入多区间对比列表（依次追加，并排比较）
+      this.addSegment({
+        startMs,
+        endMs,
+        fftSize,
+        audioData: selectedData,
+        sampleRate: this.audioBuffer.sampleRate,
+        analysisResult,
+        verdict
+      });
 
-      // 显示保存记录区域
-      document.getElementById('saveRecordSection').style.display = 'block';
-      document.getElementById('recordName').value = `${this.currentFileName} - ${this.recordManager.formatTimestamp()}`;
-      document.getElementById('recordNote').value = '';
+      if (verdict.insufficient) {
+        this.uiController.showToast('该区间谐波数据不足，请重选持续稳定的区间，未判为不合格', 'warning');
+      } else {
+        const labelMap = { pass: '合格', doubt: '存疑', fail: '不合格' };
+        this.uiController.showToast(`音色判定：${labelMap[verdict.tier]}`, verdict.tier === 'fail' ? 'error' : verdict.tier === 'doubt' ? 'warning' : 'success');
+      }
 
     } catch (error) {
       logger.error('音频分析失败', error);
@@ -311,6 +360,192 @@ class App {
         <span class="harmonic-freq">${h.toFixed(1)} Hz</span>
       </div>
     `).join('');
+  }
+
+  /**
+   * 追加一个已判定区间，并渲染对比表与判定卡
+   */
+  addSegment(segment) {
+    // 同区间重复分析时替换旧记录，避免堆积
+    const existingIndex = this.segments.findIndex(s =>
+      s.startMs === segment.startMs && s.endMs === segment.endMs);
+    const id = existingIndex >= 0
+      ? this.segments[existingIndex].id
+      : `seg-${Date.now()}-${++this.segmentSeq}`;
+
+    const stored = { id, ...segment };
+    if (existingIndex >= 0) {
+      this.segments[existingIndex] = stored;
+    } else {
+      const MAX_SEGMENTS = 20;
+      if (this.segments.length >= MAX_SEGMENTS) {
+        this.segments.shift();
+        this.uiController.showToast(`对比区间最多保留 ${MAX_SEGMENTS} 段，已移除最早的一段`, 'warning');
+      }
+      this.segments.push(stored);
+    }
+    this.activeSegmentId = id;
+    this.activateSegment(id);
+  }
+
+  /**
+   * 激活某段：恢复该段图表、结果与判定卡
+   */
+  activateSegment(id) {
+    const seg = this.segments.find(s => s.id === id);
+    if (!seg) return;
+    this.activeSegmentId = id;
+    this.currentAnalysisResult = seg.analysisResult;
+
+    document.getElementById('startTime').value = seg.startMs;
+    document.getElementById('endTime').value = seg.endMs;
+    this.updateRangeSlider();
+
+    this.chartManager.updateAllCharts(seg.analysisResult, seg.audioData, seg.sampleRate);
+    this.updateFundamentalInfo(seg.analysisResult);
+    this.verdictView.renderVerdictCard(seg, this.timbreJudge);
+    this.verdictView.renderComparisonTable(this.segments, this.activeSegmentId);
+
+    document.getElementById('chartContainer').style.display = 'flex';
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('saveRecordSection').style.display = 'block';
+    document.getElementById('recordName').value = `${this.currentFileName} ${(seg.startMs / 1000).toFixed(2)}s-${(seg.endMs / 1000).toFixed(2)}s - ${this.recordManager.formatTimestamp()}`;
+    document.getElementById('recordNote').value = '';
+  }
+
+  removeSegment(id) {
+    const idx = this.segments.findIndex(s => s.id === id);
+    if (idx === -1) return;
+    this.segments.splice(idx, 1);
+
+    if (this.activeSegmentId === id) {
+      const next = this.segments[0] || null;
+      if (next) {
+        this.activateSegment(next.id);
+        return;
+      }
+      this.activeSegmentId = null;
+      this.currentAnalysisResult = null;
+      this.verdictView.hideVerdictCard();
+      document.getElementById('chartContainer').style.display = 'none';
+      document.getElementById('saveRecordSection').style.display = 'none';
+      document.getElementById('emptyState').style.display = 'flex';
+    }
+    this.verdictView.renderComparisonTable(this.segments, this.activeSegmentId);
+  }
+
+  bindCompareEvents() {
+    document.getElementById('clearCompareBtn').addEventListener('click', () => {
+      this.resetSegments();
+      document.getElementById('chartContainer').style.display = 'none';
+      document.getElementById('saveRecordSection').style.display = 'none';
+      document.getElementById('emptyState').style.display = 'flex';
+      this.uiController.showToast('已清空对比区间（判定口径保留）', 'info');
+    });
+
+    this.verdictView.compareBody.addEventListener('click', (e) => {
+      const loadBtn = e.target.closest('.btn-row-load');
+      const removeBtn = e.target.closest('.btn-row-remove');
+      const row = e.target.closest('.compare-row');
+      if (loadBtn) {
+        this.activateSegment(loadBtn.dataset.id);
+      } else if (removeBtn) {
+        this.removeSegment(removeBtn.dataset.id);
+      } else if (row) {
+        this.activateSegment(row.dataset.id);
+      }
+    });
+  }
+
+  /**
+   * 判定口径面板：回填、保存、重判
+   */
+  fillCriteriaForm() {
+    const c = this.timbreJudge.criteria;
+    document.getElementById('criteriaPitchPass').value = c.pitchPassCents;
+    document.getElementById('criteriaPitchDoubt').value = c.pitchDoubtCents;
+    document.getElementById('criteriaDecayPassMin').value = c.decayPassMin;
+    document.getElementById('criteriaDecayPassMax').value = c.decayPassMax;
+    document.getElementById('criteriaDecayDoubtMin').value = c.decayDoubtMin;
+    document.getElementById('criteriaDecayDoubtMax').value = c.decayDoubtMax;
+    document.getElementById('criteriaMinHarmonics').value = c.minHarmonics;
+    document.getElementById('criteriaAgreement').value = c.agreementCents;
+    document.getElementById('criteriaNoiseFloor').value = c.noiseFloorDb;
+    document.getElementById('criteriaMinRms').value = c.minRms;
+  }
+
+  readCriteriaForm() {
+    const num = (id) => {
+      const v = parseFloat(document.getElementById(id).value);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    return {
+      pitchPassCents: num('criteriaPitchPass'),
+      pitchDoubtCents: num('criteriaPitchDoubt'),
+      decayPassMin: num('criteriaDecayPassMin'),
+      decayPassMax: num('criteriaDecayPassMax'),
+      decayDoubtMin: num('criteriaDecayDoubtMin'),
+      decayDoubtMax: num('criteriaDecayDoubtMax'),
+      minHarmonics: num('criteriaMinHarmonics'),
+      agreementCents: num('criteriaAgreement'),
+      noiseFloorDb: num('criteriaNoiseFloor'),
+      minRms: num('criteriaMinRms')
+    };
+  }
+
+  saveCriteriaFromForm() {
+    const partial = this.readCriteriaForm();
+    this.timbreJudge.saveCriteria(partial);
+    this.fillCriteriaForm(); // 用归一化后的值回填，修正越界/端点倒置
+    this.rejudgeSegments();
+  }
+
+  /**
+   * 口径变更后用新口径重判所有对比区间
+   */
+  rejudgeSegments() {
+    if (this.segments.length === 0) return;
+    for (const seg of this.segments) {
+      const r = seg.analysisResult;
+      const verdict = this.timbreJudge.judge({
+        autocorrFreq: r.autocorrFreq,
+        peakFreq: r.peakFreq,
+        frequencies: r.rawFrequencies,
+        magnitudes: r.rawMagnitudes,
+        resolution: r.frequencyResolution,
+        rms: r.rms
+      });
+      seg.verdict = verdict;
+      r.verdict = verdict;
+    }
+    if (this.activeSegmentId) {
+      const seg = this.segments.find(s => s.id === this.activeSegmentId);
+      if (seg) this.verdictView.renderVerdictCard(seg, this.timbreJudge);
+    }
+    this.verdictView.renderComparisonTable(this.segments, this.activeSegmentId);
+    this.uiController.showToast('已按新口径重判全部对比区间', 'success');
+  }
+
+  bindCriteriaEvents() {
+    const fieldIds = [
+      'criteriaPitchPass', 'criteriaPitchDoubt',
+      'criteriaDecayPassMin', 'criteriaDecayPassMax',
+      'criteriaDecayDoubtMin', 'criteriaDecayDoubtMax',
+      'criteriaMinHarmonics', 'criteriaAgreement',
+      'criteriaNoiseFloor', 'criteriaMinRms'
+    ];
+    fieldIds.forEach(id => {
+      document.getElementById(id).addEventListener('change', () => this.saveCriteriaFromForm());
+    });
+
+    document.getElementById('resetCriteriaBtn').addEventListener('click', () => {
+      this.timbreJudge.resetCriteria();
+      this.fillCriteriaForm();
+      this.rejudgeSegments();
+      this.uiController.showToast('判定口径已恢复默认', 'info');
+    });
+
+    this.bindCompareEvents();
   }
 
   bindRecordEvents() {
@@ -357,6 +592,7 @@ class App {
         harmonics: this.currentAnalysisResult.harmonics,
         harmonicIntensities,
         analysisResult: this.currentAnalysisResult,
+        verdict: this.currentAnalysisResult.verdict || null,
         name: name
       });
 
@@ -420,6 +656,7 @@ class App {
         <div class="record-main">
           <span class="record-name" title="${record.name}">${this.truncateText(record.name, 25)}</span>
           <span class="record-freq">${record.fundamentalFreq.toFixed(1)} Hz</span>
+          ${record.verdict ? this.verdictView.badgeHtml(record.verdict.tier, 'badge-sm') : ''}
         </div>
         <div class="record-meta">
           <span class="record-file" title="${record.fileName}">${this.truncateText(record.fileName, 20)}</span>
@@ -523,7 +760,9 @@ class App {
             }).join('')}
           </div>
         </div>
-        
+
+        ${record.verdict ? this.verdictView.renderModalVerdict(record.verdict) : ''}
+
         ${record.note ? `
           <div class="detail-section">
             <h4>备注</h4>
@@ -558,6 +797,16 @@ class App {
     const sampleRate = 44100;
     this.chartManager.updateAllCharts(record.analysisResult, fakeAudioData, sampleRate);
     this.updateFundamentalInfo(record.analysisResult);
+
+    // 历史记录里的判定结果（携带判定时的口径快照）
+    if (record.analysisResult.verdict) {
+      this.verdictView.renderVerdictCard(
+        { verdict: record.analysisResult.verdict },
+        this.timbreJudge
+      );
+    } else {
+      this.verdictView.hideVerdictCard();
+    }
 
     document.getElementById('chartContainer').style.display = 'flex';
     document.getElementById('emptyState').style.display = 'none';

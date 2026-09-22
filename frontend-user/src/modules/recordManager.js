@@ -53,6 +53,7 @@ export class RecordManager {
    * @param {Array} recordData.harmonics - 倍频数组
    * @param {Object} recordData.harmonicIntensities - 倍频强度
    * @param {Object} recordData.analysisResult - 完整分析结果
+   * @param {Object} [recordData.verdict] - 音色判定结果（含口径快照）
    * @param {string} recordData.name - 记录名称（可选）
    * @returns {Object} 创建的记录
    */
@@ -68,6 +69,7 @@ export class RecordManager {
       harmonics: recordData.harmonics,
       harmonicIntensities: recordData.harmonicIntensities,
       analysisResult: recordData.analysisResult,
+      verdict: recordData.verdict || null,
       createdAt: Date.now(),
       note: ''
     };

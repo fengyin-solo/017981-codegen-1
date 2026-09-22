@@ -1118,3 +1118,565 @@ body {
     opacity: 0;
   }
 }
+
+/* ========== 音色判定 ========== */
+
+/* 判定档位徽标 */
+.verdict-badge,
+.verdict-badge-large {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.verdict-badge.badge-sm {
+  padding: 1px 7px;
+  font-size: 11px;
+}
+
+.verdict-badge-large {
+  padding: 6px 18px;
+  font-size: 16px;
+}
+
+.tier-pass {
+  background: #E8F5E9;
+  color: #2E7D32;
+  border: 1px solid #A5D6A7;
+}
+
+.tier-doubt {
+  background: #FFF3E0;
+  color: #E65100;
+  border: 1px solid #FFCC80;
+}
+
+.tier-fail {
+  background: #FFEBEE;
+  color: #C62828;
+  border: 1px solid #EF9A9A;
+}
+
+.tier-insufficient {
+  background: #ECEFF1;
+  color: #455A64;
+  border: 1px solid #B0BEC5;
+}
+
+.tier-text-pass { color: #2E7D32; font-weight: 600; }
+.tier-text-doubt { color: #E65100; font-weight: 600; }
+.tier-text-fail { color: #C62828; font-weight: 600; }
+
+/* 判定口径面板 */
+.criteria-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.criteria-panel-header h2 {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.btn-reset-criteria {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-reset-criteria:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.criteria-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+}
+
+.criteria-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.criteria-field label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.criteria-field input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.criteria-field input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.criteria-hint {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.85;
+  line-height: 1.5;
+}
+
+/* 判定卡 */
+.verdict-card,
+.compare-section {
+  background: var(--surface-color);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+  margin-bottom: 20px;
+}
+
+.verdict-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.verdict-card-head h3,
+.compare-head h3 {
+  font-size: 16px;
+  color: var(--primary-color);
+}
+
+.verdict-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.summary-item {
+  background: #FFFAF0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.summary-value {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.summary-ref {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
+/* 两路方法并排 */
+.method-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.method-column {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: #FFFEFB;
+}
+
+.method-column.method-invalid {
+  background: #FAFAFA;
+}
+
+.method-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.method-name {
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+
+.method-f0 {
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.method-reason {
+  font-size: 13px;
+  color: #455A64;
+  margin-bottom: 6px;
+}
+
+.method-tiers {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.slope-val {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 3~8 谐波能量小条 */
+.mini-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mini-bar-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.mini-bar-track {
+  height: 8px;
+  background: #F0E6D2;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.mini-bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-light), var(--secondary-color));
+  border-radius: 4px;
+}
+
+.mini-bar-fill.undetectable {
+  background: #CFD8DC;
+}
+
+.mini-bar-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 数据不足提示 */
+.verdict-insufficient .insufficient-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #455A64;
+  margin-bottom: 8px;
+}
+
+.suggestion {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #ECEFF1;
+  border-left: 3px solid #78909C;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: #37474F;
+}
+
+.method-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.method-mini {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.method-mini-name {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.method-mini-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.reason-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reason-list li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.reason-list li::before {
+  content: '•';
+  position: absolute;
+  left: 4px;
+  color: var(--secondary-color);
+}
+
+/* 结果旁的判定口径 */
+.verdict-criteria {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.criteria-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.criteria-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.criteria-list li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.criteria-list li::before {
+  content: '◇';
+  position: absolute;
+  left: 2px;
+  font-size: 10px;
+  color: var(--secondary-color);
+}
+
+.criteria-list-compact {
+  margin-top: 6px;
+}
+
+/* 多区间对比表 */
+.compare-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.compare-count {
+  display: inline-block;
+  min-width: 22px;
+  padding: 0 7px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--primary-color);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+
+.btn-clear-compare {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-clear-compare:hover {
+  border-color: var(--error-color);
+  color: var(--error-color);
+}
+
+.compare-table-wrapper {
+  overflow-x: auto;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.compare-table th {
+  text-align: left;
+  padding: 8px 10px;
+  background: #FAF0E0;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.compare-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #F0E6D2;
+  vertical-align: middle;
+}
+
+.compare-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.compare-row:hover {
+  background: #FFFAF0;
+}
+
+.compare-row.active {
+  background: #FFF3E0;
+  box-shadow: inset 3px 0 0 var(--secondary-color);
+}
+
+.cell-range {
+  display: flex;
+  flex-direction: column;
+  white-space: nowrap;
+}
+
+.range-text {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.range-duration {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.cell-metric {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 超出参考范围的档位单独标出 */
+.metric-pass,
+.metric-doubt,
+.metric-fail,
+.metric-na {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.metric-pass { background: #E8F5E9; color: #2E7D32; }
+.metric-doubt { background: #FFF3E0; color: #E65100; }
+.metric-fail { background: #FFEBEE; color: #C62828; }
+.metric-na { background: #ECEFF1; color: #90A4AE; }
+
+.metric-pass.swatch,
+.metric-doubt.swatch,
+.metric-fail.swatch {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  margin-right: 2px;
+}
+
+.cell-actions {
+  white-space: nowrap;
+}
+
+.btn-row-load,
+.btn-row-remove {
+  border: 1px solid var(--border-color);
+  background: #fff;
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-right: 4px;
+}
+
+.btn-row-load:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.btn-row-remove:hover {
+  border-color: var(--error-color);
+  color: var(--error-color);
+}
+
+.compare-footnote {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 12px;
+}
+
+/* 弹窗里的判定块 */
+.modal-verdict .verdict-badge-large {
+  margin-bottom: 10px;
+}
+
+/* 判定卡响应式 */
+@media (max-width: 1200px) {
+  .verdict-summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .method-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .criteria-grid {
+    grid-template-columns: 1fr;
+  }
+}
