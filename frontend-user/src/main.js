@@ -2,6 +2,7 @@ import { AudioAnalyzer } from './modules/audioAnalyzer.js';
 import { ChartManager } from './modules/chartManager.js';
 import { UIController } from './modules/uiController.js';
 import { RecordManager } from './modules/recordManager.js';
+import { TimbreAssessor, GRADES } from './modules/timbreAssessor.js';
 import { Logger } from './utils/logger.js';
 
 // 初始化日志
@@ -14,11 +15,13 @@ class App {
     this.chartManager = null;
     this.uiController = null;
     this.recordManager = null;
+    this.timbreAssessor = null;
     this.audioBuffer = null;
     this.audioContext = null;
     this.currentAnalysisResult = null;
     this.currentFileName = '';
     this.selectedRecordId = null;
+    this.assessments = [];
   }
 
   async init() {
@@ -33,9 +36,13 @@ class App {
       this.chartManager = new ChartManager();
       this.uiController = new UIController();
       this.recordManager = new RecordManager();
+      this.timbreAssessor = new TimbreAssessor();
 
       // 绑定事件
       this.bindEvents();
+
+      // 初始化判定口径表单（口径持久化，跨文件保留）
+      this.initCriteriaForm();
 
       // 加载历史记录列表
       this.updateRecordsList();
@@ -88,6 +95,12 @@ class App {
     const analyzeBtn = document.getElementById('analyzeBtn');
     analyzeBtn.addEventListener('click', () => this.analyzeAudio());
 
+    // 音色判定按钮
+    document.getElementById('assessBtn').addEventListener('click', () => this.assessCurrentSegment());
+
+    // 清空判定列表
+    document.getElementById('clearAssessmentsBtn').addEventListener('click', () => this.clearAssessments());
+
     // 记录相关事件
     this.bindRecordEvents();
   }
@@ -134,8 +147,12 @@ class App {
 
       this.updateRangeSlider();
 
-      // 启用分析按钮
+      // 启用分析与判定按钮
       document.getElementById('analyzeBtn').disabled = false;
+      document.getElementById('assessBtn').disabled = false;
+
+      // 更换文件后清空区间判定列表（判定口径保留不变）
+      this.resetAssessments();
 
       logger.info('音频文件加载成功', { duration, sampleRate: this.audioBuffer.sampleRate });
     } catch (error) {
@@ -155,10 +172,14 @@ class App {
     document.getElementById('uploadArea').style.display = 'block';
     document.getElementById('audioPlayerSection').style.display = 'none';
     document.getElementById('analyzeBtn').disabled = true;
+    document.getElementById('assessBtn').disabled = true;
     document.getElementById('chartContainer').style.display = 'none';
     document.getElementById('emptyState').style.display = 'flex';
     document.getElementById('fundamentalInfo').style.display = 'none';
     document.getElementById('saveRecordSection').style.display = 'none';
+
+    // 清空区间判定列表（判定口径保留不变）
+    this.resetAssessments();
     
     // 清除图表
     this.chartManager.clearAllCharts();
@@ -311,6 +332,271 @@ class App {
         <span class="harmonic-freq">${h.toFixed(1)} Hz</span>
       </div>
     `).join('');
+  }
+
+  /**
+   * 初始化判定口径表单 - 口径存 localStorage，更换文件后原样保留
+   */
+  initCriteriaForm() {
+    this.fillCriteriaForm(this.timbreAssessor.criteria);
+
+    // 展开/收起口径表单
+    document.getElementById('criteriaToggle').addEventListener('click', () => {
+      const form = document.getElementById('criteriaForm');
+      const icon = document.getElementById('criteriaToggleIcon');
+      const collapsed = form.style.display === 'none';
+      form.style.display = collapsed ? 'block' : 'none';
+      icon.textContent = collapsed ? '▼' : '▶';
+    });
+
+    // 口径修改即保存
+    const fieldMap = {
+      critPitchGood: 'pitchGoodCents',
+      critPitchWarn: 'pitchWarnCents',
+      critDecayGoodMin: 'decayGoodMin',
+      critDecayGoodMax: 'decayGoodMax',
+      critDecayWarnMin: 'decayWarnMin',
+      critDecayWarnMax: 'decayWarnMax',
+      critMinRatio: 'minHarmonicRatioPct',
+      critMinCount: 'minDetectableCount'
+    };
+
+    Object.entries(fieldMap).forEach(([elementId, key]) => {
+      document.getElementById(elementId).addEventListener('change', (e) => {
+        const updated = this.timbreAssessor.updateCriteria({ [key]: e.target.value });
+        // 自动修正（如合格档宽于存疑档）后回显
+        this.fillCriteriaForm(updated);
+        logger.info('判定口径已更新', updated);
+      });
+    });
+
+    // 恢复默认口径
+    document.getElementById('resetCriteriaBtn').addEventListener('click', () => {
+      const defaults = this.timbreAssessor.resetCriteria();
+      this.fillCriteriaForm(defaults);
+      this.uiController.showToast('判定口径已恢复默认', 'success');
+    });
+  }
+
+  /**
+   * 把口径值填进表单
+   */
+  fillCriteriaForm(criteria) {
+    document.getElementById('critPitchGood').value = criteria.pitchGoodCents;
+    document.getElementById('critPitchWarn').value = criteria.pitchWarnCents;
+    document.getElementById('critDecayGoodMin').value = criteria.decayGoodMin;
+    document.getElementById('critDecayGoodMax').value = criteria.decayGoodMax;
+    document.getElementById('critDecayWarnMin').value = criteria.decayWarnMin;
+    document.getElementById('critDecayWarnMax').value = criteria.decayWarnMax;
+    document.getElementById('critMinRatio').value = criteria.minHarmonicRatioPct;
+    document.getElementById('critMinCount').value = criteria.minDetectableCount;
+  }
+
+  /**
+   * 判定当前选中区间的音色，结果追加进对比列表
+   */
+  async assessCurrentSegment() {
+    if (!this.audioBuffer) {
+      alert('请先上传音频文件');
+      return;
+    }
+
+    const startMs = parseInt(document.getElementById('startTime').value) || 0;
+    const endMs = parseInt(document.getElementById('endTime').value) || 0;
+
+    if (startMs >= endMs) {
+      alert('请选择有效的时间区间');
+      return;
+    }
+
+    logger.info('开始音色判定', { startMs, endMs });
+
+    try {
+      this.uiController.showLoading('正在判定音色...');
+
+      const fftSize = parseInt(document.getElementById('fftSize').value);
+      const startSample = Math.floor((startMs / 1000) * this.audioBuffer.sampleRate);
+      const endSample = Math.floor((endMs / 1000) * this.audioBuffer.sampleRate);
+      const channelData = this.audioBuffer.getChannelData(0);
+      const selectedData = channelData.slice(startSample, endSample);
+
+      // 轻量分析 + 判定
+      const segmentAnalysis = this.audioAnalyzer.analyzeSegmentForAssessment(
+        selectedData, this.audioBuffer.sampleRate, fftSize
+      );
+      const result = this.timbreAssessor.assess(segmentAnalysis, { startMs, endMs });
+      result.id = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+
+      // 追加进对比列表
+      this.assessments.push(result);
+
+      // 渲染当前结果与对比列表
+      this.renderAssessmentCurrent(result);
+      this.renderAssessmentList();
+
+      document.getElementById('assessmentContainer').style.display = 'block';
+      document.getElementById('emptyState').style.display = 'none';
+
+      if (result.status === 'insufficient') {
+        this.uiController.showToast('数据不足：谐波能量太弱，请重新选择区间', 'warning');
+      } else {
+        const label = GRADES[result.grade].label;
+        const toastType = result.grade === 0 ? 'success' : (result.grade === 1 ? 'warning' : 'error');
+        this.uiController.showToast(`音色判定：${label}`, toastType);
+      }
+    } catch (error) {
+      logger.error('音色判定失败', error);
+      alert('音色判定失败: ' + error.message);
+    } finally {
+      this.uiController.hideLoading();
+    }
+  }
+
+  /**
+   * 渲染当前区间的判定结果（判定口径写在结果旁）
+   */
+  renderAssessmentCurrent(result) {
+    const container = document.getElementById('assessmentCurrent');
+
+    if (result.status === 'insufficient') {
+      container.innerHTML = `
+        <div class="assessment-card grade-insufficient">
+          <div class="assessment-grade-badge">数据不足</div>
+          <div class="assessment-details">
+            <div class="assessment-row">
+              <span class="assessment-label">区间</span>
+              <span class="assessment-value">${result.startMs} – ${result.endMs} ms</span>
+            </div>
+            <div class="assessment-row">
+              <span class="assessment-label">说明</span>
+              <span class="assessment-value">谐波能量太弱，无法可靠判定音色，不作不合格处理。请重新选择包含稳定发音的区间后再判定。</span>
+            </div>
+            <div class="assessment-row">
+              <span class="assessment-label">原因</span>
+              <span class="assessment-value">${result.insufficientReasons.join('；')}</span>
+            </div>
+          </div>
+          <p class="assessment-criteria">${result.criteriaText}</p>
+        </div>
+      `;
+      return;
+    }
+
+    const grade = GRADES[result.grade];
+    const a = result.methods.autocorr;
+    const p = result.methods.peak;
+    const agreeText = result.agreed
+      ? `自相关法与峰值检测结论一致（均为${grade.label}）`
+      : `自相关法判${GRADES[a.grade].label}、峰值检测判${GRADES[p.grade].label}，不一致，按较保守档定为${grade.label}`;
+
+    container.innerHTML = `
+      <div class="assessment-card grade-${grade.key}">
+        <div class="assessment-grade-badge">${grade.label}</div>
+        <div class="assessment-details">
+          <div class="assessment-row">
+            <span class="assessment-label">区间</span>
+            <span class="assessment-value">${result.startMs} – ${result.endMs} ms</span>
+          </div>
+          <div class="assessment-row">
+            <span class="assessment-label">音准偏差</span>
+            <span class="assessment-value">自相关 ${this.formatCents(a.note.cents)}（最近音 ${a.note.name}），峰值 ${this.formatCents(p.note.cents)}（最近音 ${p.note.name}）</span>
+          </div>
+          <div class="assessment-row">
+            <span class="assessment-label">谐波衰减</span>
+            <span class="assessment-value">自相关 ${this.formatSlope(a.slope)}，峰值 ${this.formatSlope(p.slope)}（第 3~8 次谐波）</span>
+          </div>
+          <div class="assessment-row">
+            <span class="assessment-label">相互印证</span>
+            <span class="assessment-value">${agreeText}</span>
+          </div>
+        </div>
+        <p class="assessment-criteria">${result.criteriaText}</p>
+      </div>
+    `;
+  }
+
+  /**
+   * 渲染区间对比列表，超出参考范围的行单独标出
+   */
+  renderAssessmentList() {
+    const tbody = document.getElementById('assessmentTableBody');
+    const wrapper = document.getElementById('assessmentTableWrapper');
+    const empty = document.getElementById('assessmentEmpty');
+    document.getElementById('assessmentCount').textContent = this.assessments.length;
+
+    if (this.assessments.length === 0) {
+      wrapper.style.display = 'none';
+      empty.style.display = 'flex';
+      return;
+    }
+
+    wrapper.style.display = 'block';
+    empty.style.display = 'none';
+
+    tbody.innerHTML = this.assessments.map((r, i) => {
+      if (r.status === 'insufficient') {
+        return `
+          <tr class="out-of-range grade-insufficient" title="${r.insufficientReasons.join('；')}">
+            <td>${i + 1}</td>
+            <td>${r.startMs} – ${r.endMs}</td>
+            <td>${r.fundamental ? r.fundamental.toFixed(1) : '—'}</td>
+            <td>—</td>
+            <td>—</td>
+            <td><span class="grade-tag grade-insufficient">数据不足</span></td>
+          </tr>
+        `;
+      }
+
+      const grade = GRADES[r.grade];
+      const a = r.methods.autocorr;
+      const p = r.methods.peak;
+      // 合格在参考范围内，其余档位（存疑/不合格）单独标出
+      const rowClass = r.grade === 0 ? '' : `out-of-range grade-${grade.key}`;
+      const flag = r.grade === 0 ? '' : '<span class="range-flag" title="超出参考范围">⚠</span>';
+
+      return `
+        <tr class="${rowClass}">
+          <td>${i + 1}</td>
+          <td>${r.startMs} – ${r.endMs}</td>
+          <td>${a.fundamental.toFixed(1)} / ${p.fundamental.toFixed(1)}</td>
+          <td>${this.formatCents(a.note.cents)} / ${this.formatCents(p.note.cents)}</td>
+          <td>${this.formatSlope(a.slope)} / ${this.formatSlope(p.slope)}</td>
+          <td>${flag}<span class="grade-tag grade-${grade.key}">${grade.label}</span></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  /**
+   * 清空判定列表（换文件或点清空时调用，不影响判定口径）
+   */
+  resetAssessments() {
+    this.assessments = [];
+    document.getElementById('assessmentContainer').style.display = 'none';
+    document.getElementById('assessmentCurrent').innerHTML = '';
+    this.renderAssessmentList();
+  }
+
+  clearAssessments() {
+    this.resetAssessments();
+    this.uiController.showToast('判定列表已清空', 'info');
+    logger.info('判定列表已清空');
+  }
+
+  /**
+   * 格式化音分偏差（带正负号）
+   */
+  formatCents(cents) {
+    const sign = cents >= 0 ? '+' : '−';
+    return `${sign}${Math.abs(cents).toFixed(1)}`;
+  }
+
+  /**
+   * 格式化衰减斜率
+   */
+  formatSlope(slope) {
+    if (slope === null || slope === undefined) return '—';
+    return `${slope.toFixed(1)}`;
   }
 
   bindRecordEvents() {

@@ -1070,6 +1070,340 @@ body {
   line-height: 1.6;
 }
 
+/* 音色判定面板 */
+.btn-assess {
+  width: 100%;
+  padding: 13px 20px;
+  background: linear-gradient(135deg, var(--secondary-color), var(--primary-light));
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.3s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-assess:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-assess:disabled {
+  background: #BDBDBD;
+  cursor: not-allowed;
+}
+
+.assess-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.criteria-toggle {
+  margin-top: 12px;
+  padding: 8px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #FFFAF0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-color);
+  cursor: pointer;
+  user-select: none;
+}
+
+.criteria-toggle:hover {
+  background: #FFF8DC;
+}
+
+.criteria-form {
+  margin-top: 10px;
+  padding: 12px;
+  background: #FFFAF0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.criteria-group {
+  margin-bottom: 12px;
+}
+
+.criteria-group > label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+}
+
+.criteria-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.criteria-input {
+  width: 58px;
+  padding: 4px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  text-align: center;
+  background: white;
+  color: var(--text-primary);
+}
+
+.criteria-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.btn-reset-criteria {
+  width: 100%;
+  padding: 8px;
+  background: white;
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-reset-criteria:hover {
+  background: var(--primary-color);
+  color: white;
+}
+
+.criteria-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* 音色判定结果区 */
+.assessment-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.assessment-current {
+  margin-bottom: 18px;
+}
+
+.assessment-card {
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  border: 1px solid var(--border-color);
+  border-left-width: 6px;
+  background: #FFFAF0;
+}
+
+.assessment-card.grade-pass {
+  border-left-color: var(--success-color);
+  background: #F1F8E9;
+}
+
+.assessment-card.grade-suspect {
+  border-left-color: var(--warning-color);
+  background: #FFF8E1;
+}
+
+.assessment-card.grade-fail {
+  border-left-color: var(--error-color);
+  background: #FFEBEE;
+}
+
+.assessment-card.grade-insufficient {
+  border-left-color: #9E9E9E;
+  background: #F5F5F5;
+}
+
+.assessment-grade-badge {
+  display: inline-block;
+  padding: 6px 18px;
+  border-radius: 20px;
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 12px;
+}
+
+.grade-pass .assessment-grade-badge,
+.grade-tag.grade-pass {
+  background: var(--success-color);
+}
+
+.grade-suspect .assessment-grade-badge,
+.grade-tag.grade-suspect {
+  background: var(--warning-color);
+}
+
+.grade-fail .assessment-grade-badge,
+.grade-tag.grade-fail {
+  background: var(--error-color);
+}
+
+.grade-insufficient .assessment-grade-badge,
+.grade-tag.grade-insufficient {
+  background: #9E9E9E;
+}
+
+.assessment-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assessment-row {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.assessment-label {
+  flex-shrink: 0;
+  width: 70px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.assessment-value {
+  color: var(--text-primary);
+}
+
+.assessment-criteria {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* 区间对比列表 */
+.assessment-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.assessment-list-header h4 {
+  font-size: 14px;
+  color: var(--primary-color);
+}
+
+.btn-clear-assessments {
+  padding: 6px 14px;
+  background: white;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-clear-assessments:hover {
+  color: var(--error-color);
+  border-color: var(--error-color);
+}
+
+.assessment-table-wrapper {
+  overflow-x: auto;
+}
+
+.assessment-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.assessment-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 2px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.assessment-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #F0E6D2;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* 超出参考范围的行单独标出 */
+.assessment-table tr.out-of-range.grade-suspect td {
+  background: #FFF8E1;
+}
+
+.assessment-table tr.out-of-range.grade-fail td {
+  background: #FFEBEE;
+}
+
+.assessment-table tr.out-of-range.grade-insufficient td {
+  background: #F5F5F5;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.range-flag {
+  margin-right: 6px;
+  color: var(--warning-color);
+}
+
+.grade-tag {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+}
+
+.assessment-table-note {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.assessment-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.assessment-empty .empty-icon {
+  font-size: 32px;
+}
+
 /* 响应式设计 */
 @media (max-width: 1200px) {
   .frequency-bands {

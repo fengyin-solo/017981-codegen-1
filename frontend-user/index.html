@@ -98,6 +98,60 @@
           </button>
         </section>
 
+        <section class="panel-section" id="timbrePanel">
+          <h2>音色判定</h2>
+          <button class="btn-assess" id="assessBtn" disabled>
+            <span class="btn-icon">🎼</span>
+            判定当前区间
+          </button>
+          <p class="assess-hint">对当前选中区间按谐波特征判定音色，可换区间多次判定并横向比较</p>
+          <div class="criteria-toggle" id="criteriaToggle">
+            <span>判定口径</span>
+            <span class="criteria-toggle-icon" id="criteriaToggleIcon">▼</span>
+          </div>
+          <div class="criteria-form" id="criteriaForm">
+            <div class="criteria-group">
+              <label>音准偏差（音分）</label>
+              <div class="criteria-row">
+                <span>合格 ≤</span>
+                <input type="number" id="critPitchGood" class="criteria-input" min="1" max="100" step="1">
+                <span>，存疑 ≤</span>
+                <input type="number" id="critPitchWarn" class="criteria-input" min="1" max="200" step="1">
+              </div>
+            </div>
+            <div class="criteria-group">
+              <label>谐波衰减 3~8 次（dB/谐波）</label>
+              <div class="criteria-row">
+                <span>合格</span>
+                <input type="number" id="critDecayGoodMin" class="criteria-input" min="-30" max="0" step="0.5">
+                <span>~</span>
+                <input type="number" id="critDecayGoodMax" class="criteria-input" min="-30" max="0" step="0.5">
+              </div>
+              <div class="criteria-row">
+                <span>存疑</span>
+                <input type="number" id="critDecayWarnMin" class="criteria-input" min="-30" max="0" step="0.5">
+                <span>~</span>
+                <input type="number" id="critDecayWarnMax" class="criteria-input" min="-30" max="0" step="0.5">
+              </div>
+            </div>
+            <div class="criteria-group">
+              <label>数据不足阈值</label>
+              <div class="criteria-row">
+                <span>谐波总能量/基频 &lt;</span>
+                <input type="number" id="critMinRatio" class="criteria-input" min="0" max="100" step="0.5">
+                <span>%</span>
+              </div>
+              <div class="criteria-row">
+                <span>可检测谐波少于</span>
+                <input type="number" id="critMinCount" class="criteria-input" min="1" max="6" step="1">
+                <span>个</span>
+              </div>
+            </div>
+            <button class="btn-reset-criteria" id="resetCriteriaBtn">恢复默认口径</button>
+            <p class="criteria-hint">口径自动保存，更换音频文件后原样保留</p>
+          </div>
+        </section>
+
         <section class="panel-section" id="fundamentalInfo" style="display: none;">
           <h2>基频信息</h2>
           <div class="fundamental-display">
@@ -196,6 +250,40 @@
                 <div class="chart-wrapper">
                   <canvas id="highFreqChart"></canvas>
                 </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- 音色判定结果 -->
+        <div class="assessment-container" id="assessmentContainer" style="display: none;">
+          <section class="chart-section assessment-section">
+            <h3>音色判定</h3>
+            <div class="assessment-current" id="assessmentCurrent"></div>
+            <div class="assessment-list-section">
+              <div class="assessment-list-header">
+                <h4>区间对比（<span id="assessmentCount">0</span>）</h4>
+                <button class="btn-clear-assessments" id="clearAssessmentsBtn">清空列表</button>
+              </div>
+              <div class="assessment-table-wrapper" id="assessmentTableWrapper" style="display: none;">
+                <table class="assessment-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>区间 (ms)</th>
+                      <th>基频 自相关/峰值 (Hz)</th>
+                      <th>音准偏差 (音分)</th>
+                      <th>谐波衰减 (dB/谐波)</th>
+                      <th>判定</th>
+                    </tr>
+                  </thead>
+                  <tbody id="assessmentTableBody"></tbody>
+                </table>
+                <p class="assessment-table-note">标色行为超出参考范围（存疑 / 不合格）或数据不足的区间</p>
+              </div>
+              <div class="assessment-empty" id="assessmentEmpty">
+                <span class="empty-icon">🎼</span>
+                <p>尚未判定任何区间。选择区间后点击左侧"判定当前区间"，可对本音频的多个区间依次判定并在此并排比较。</p>
               </div>
             </div>
           </section>

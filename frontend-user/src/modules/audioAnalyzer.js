@@ -39,8 +39,9 @@ export class AudioAnalyzer {
       }
     }
 
-    // 检测基频
-    const fundamentalFreq = this.detectFundamentalFrequency(audioData, sampleRate, frequencies, magnitudes);
+    // 检测基频（同时保留自相关法与峰值检测两个候选，供音色判定互相印证）
+    const fundamentalCandidates = this.getFundamentalCandidates(audioData, sampleRate, frequencies, magnitudes);
+    const fundamentalFreq = fundamentalCandidates.final;
     
     // 计算倍频 (最大13倍)
     const harmonics = this.calculateHarmonics(fundamentalFreq, 13);
@@ -60,6 +61,7 @@ export class AudioAnalyzer {
 
     return {
       fundamentalFreq,
+      fundamentalCandidates,
       harmonics,
       frequencies: filteredData.frequencies,
       magnitudes: filteredData.magnitudes,
@@ -106,7 +108,7 @@ export class AudioAnalyzer {
    */
   fft(data) {
     const n = data.length;
-    
+
     if (n <= 1) {
       return { real: [data[0] || 0], imag: [0] };
     }
@@ -114,10 +116,15 @@ export class AudioAnalyzer {
     // 位反转排序
     const real = new Float32Array(n);
     const imag = new Float32Array(n);
-    
+    const bits = Math.round(Math.log2(n));
+
     for (let i = 0; i < n; i++) {
-      real[i] = data[i];
-      imag[i] = 0;
+      let reversed = 0;
+      for (let b = 0; b < bits; b++) {
+        reversed = (reversed << 1) | ((i >> b) & 1);
+      }
+      real[reversed] = data[i];
+      imag[reversed] = 0;
     }
 
     // 迭代 FFT
@@ -152,77 +159,143 @@ export class AudioAnalyzer {
    * 检测基频 - 使用自相关法和峰值检测
    */
   detectFundamentalFrequency(audioData, sampleRate, frequencies, magnitudes) {
+    return this.getFundamentalCandidates(audioData, sampleRate, frequencies, magnitudes).final;
+  }
+
+  /**
+   * 获取基频候选 - 自相关法与峰值检测的结果都保留，供互相印证
+   * @returns {Object} { autocorr, peak, final }
+   */
+  getFundamentalCandidates(audioData, sampleRate, frequencies, magnitudes) {
     // 方法1: 自相关法
     const autocorrFreq = this.autocorrelation(audioData, sampleRate);
-    
+
     // 方法2: 峰值检测法
     const peakFreq = this.findDominantPeak(frequencies, magnitudes);
-    
+
     // 综合判断 - 优先使用自相关法的结果，因为它对古琴这类乐器更准确
     let fundamentalFreq = autocorrFreq;
-    
+
     // 如果自相关法结果不合理，使用峰值检测
     if (fundamentalFreq < 50 || fundamentalFreq > 2000) {
       fundamentalFreq = peakFreq;
     }
-    
+
     // 验证：检查是否可能是倍频被误检为基频
     const possibleFundamental = this.verifyFundamental(fundamentalFreq, frequencies, magnitudes);
-    
+
     logger.info('基频检测结果', { autocorrFreq, peakFreq, final: possibleFundamental });
-    
-    return possibleFundamental;
+
+    return { autocorr: autocorrFreq, peak: peakFreq, final: possibleFundamental };
   }
 
   /**
-   * 自相关法检测基频
+   * 自相关法检测基频（峰值位置做抛物线插值细化，达到音分级精度）
    */
   autocorrelation(audioData, sampleRate) {
     const minPeriod = Math.floor(sampleRate / 2000); // 最高频率 2000Hz
     const maxPeriod = Math.floor(sampleRate / 50);   // 最低频率 50Hz
     const dataLength = Math.min(audioData.length, sampleRate); // 最多分析1秒
-    
+
     let maxCorr = 0;
-    let bestPeriod = minPeriod;
-    
+    const corrs = new Float64Array(maxPeriod + 1);
+
     for (let period = minPeriod; period < maxPeriod && period < dataLength / 2; period++) {
       let corr = 0;
       let count = 0;
-      
+
       for (let i = 0; i < dataLength - period; i++) {
         corr += audioData[i] * audioData[i + period];
         count++;
       }
-      
+
       corr /= count;
-      
+      corrs[period] = corr;
+
       if (corr > maxCorr) {
         maxCorr = corr;
-        bestPeriod = period;
       }
     }
-    
+
+    // 取"第一个足够高的局部峰"对应的周期，避免把 2 倍周期（低八度）误判为基频
+    const threshold = maxCorr * 0.9;
+    const lastPeriod = Math.min(maxPeriod - 1, Math.floor(dataLength / 2) - 1);
+    let bestPeriod = minPeriod;
+    let found = false;
+    for (let period = minPeriod + 1; period < lastPeriod; period++) {
+      if (corrs[period] >= threshold &&
+          corrs[period] >= corrs[period - 1] &&
+          corrs[period] >= corrs[period + 1]) {
+        bestPeriod = period;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      // 没有满足条件的局部峰时退回到最大相关位置
+      let maxVal = -Infinity;
+      for (let period = minPeriod; period <= lastPeriod; period++) {
+        if (corrs[period] > maxVal) {
+          maxVal = corrs[period];
+          bestPeriod = period;
+        }
+      }
+    }
+
+    // 抛物线插值细化周期，减小采样量化带来的音分误差
+    if (bestPeriod > minPeriod && bestPeriod < maxPeriod - 1) {
+      const y1 = corrs[bestPeriod - 1];
+      const y2 = corrs[bestPeriod];
+      const y3 = corrs[bestPeriod + 1];
+      const denominator = y1 - 2 * y2 + y3;
+      if (denominator !== 0) {
+        const shift = 0.5 * (y1 - y3) / denominator;
+        if (Math.abs(shift) < 1) {
+          return sampleRate / (bestPeriod + shift);
+        }
+      }
+    }
+
     return sampleRate / bestPeriod;
   }
 
   /**
-   * 峰值检测法
+   * 峰值检测法（峰值频率做对数幅值抛物线插值细化，达到音分级精度）
    */
   findDominantPeak(frequencies, magnitudes) {
     let maxMag = 0;
-    let peakFreq = 100;
-    
+    let peakIndex = -1;
+
     // 在合理的基频范围内寻找最大峰值 (古琴基频通常在 60-500Hz)
     for (let i = 0; i < frequencies.length; i++) {
       if (frequencies[i] >= 50 && frequencies[i] <= 1000) {
         if (magnitudes[i] > maxMag) {
           maxMag = magnitudes[i];
-          peakFreq = frequencies[i];
+          peakIndex = i;
         }
       }
     }
-    
-    return peakFreq;
+
+    if (peakIndex === -1) {
+      return 100;
+    }
+
+    // 对数幅值抛物线插值，细化到频点间隔以内
+    if (peakIndex > 0 && peakIndex < magnitudes.length - 1) {
+      const y1 = Math.log(Math.max(magnitudes[peakIndex - 1], 1e-12));
+      const y2 = Math.log(Math.max(magnitudes[peakIndex], 1e-12));
+      const y3 = Math.log(Math.max(magnitudes[peakIndex + 1], 1e-12));
+      const denominator = y1 - 2 * y2 + y3;
+      if (denominator !== 0) {
+        const shift = 0.5 * (y1 - y3) / denominator;
+        if (Math.abs(shift) < 1 && peakIndex + 1 < frequencies.length) {
+          const resolution = frequencies[peakIndex + 1] - frequencies[peakIndex];
+          return frequencies[peakIndex] + shift * resolution;
+        }
+      }
+    }
+
+    return frequencies[peakIndex];
   }
 
   /**
@@ -397,5 +470,114 @@ export class AudioAnalyzer {
       timeLabels,
       freqLabels
     };
+  }
+
+  /**
+   * 为音色判定分析区间 - 轻量分析，只算判定需要的数据
+   * @param {Float32Array} audioData - 区间音频采样数据
+   * @param {number} sampleRate - 采样率
+   * @param {number} fftSize - FFT 大小
+   * @returns {Object} 判定用分析数据（基频候选、各方法谐波能量、噪声底、响度）
+   */
+  analyzeSegmentForAssessment(audioData, sampleRate, fftSize = 8192) {
+    logger.info('开始音色判定分析', { dataLength: audioData.length, sampleRate, fftSize });
+
+    const frequencyData = this.performFFT(audioData, fftSize);
+    const frequencyResolution = sampleRate / fftSize;
+
+    const frequencies = [];
+    const magnitudes = [];
+    for (let i = 0; i < fftSize / 2; i++) {
+      const freq = i * frequencyResolution;
+      if (freq > 20 && freq < 20000) {
+        frequencies.push(freq);
+        magnitudes.push(frequencyData[i]);
+      }
+    }
+
+    // 两种方法各自检测基频
+    const candidates = this.getFundamentalCandidates(audioData, sampleRate, frequencies, magnitudes);
+
+    // 区间响度 (RMS)
+    let sumSquares = 0;
+    for (let i = 0; i < audioData.length; i++) {
+      sumSquares += audioData[i] * audioData[i];
+    }
+    const rms = Math.sqrt(sumSquares / audioData.length);
+
+    // 噪声底：用频谱幅值中位数估计
+    const noiseFloor = this.estimateNoiseFloor(magnitudes);
+
+    // 按每个候选基频分别提取 1~8 次谐波能量
+    const extractFor = (f0) => ({
+      fundamental: f0,
+      harmonics: this.extractHarmonicEnergies(frequencies, magnitudes, f0, 8, frequencyResolution, noiseFloor)
+    });
+
+    return {
+      rms,
+      noiseFloor,
+      candidates,
+      methods: {
+        autocorr: extractFor(candidates.autocorr),
+        peak: extractFor(candidates.peak),
+        final: extractFor(candidates.final)
+      }
+    };
+  }
+
+  /**
+   * 提取指定基频下 1 ~ maxHarmonic 次谐波的能量
+   * @param {Array} frequencies - 频率数组
+   * @param {Array} magnitudes - 幅值数组
+   * @param {number} fundamentalFreq - 基频
+   * @param {number} maxHarmonic - 最大谐波次数
+   * @param {number} frequencyResolution - 频率分辨率
+   * @param {number} noiseFloor - 噪声底
+   * @returns {Array} [{ n, freq, magnitude, detectable }]
+   */
+  extractHarmonicEnergies(frequencies, magnitudes, fundamentalFreq, maxHarmonic = 8, frequencyResolution = 1, noiseFloor = 0) {
+    const harmonics = [];
+    const detectThreshold = Math.max(noiseFloor * 3, 1e-6);
+
+    for (let n = 1; n <= maxHarmonic; n++) {
+      const target = fundamentalFreq * n;
+      if (target > 20000) {
+        harmonics.push({ n, freq: target, magnitude: 0, detectable: false });
+        continue;
+      }
+
+      // 在目标频率附近找峰值（容差取 3% 或 1.5 个频点的较大者）
+      const tolerance = Math.max(target * 0.03, frequencyResolution * 1.5);
+      let peakMag = 0;
+      for (let i = 0; i < frequencies.length; i++) {
+        if (Math.abs(frequencies[i] - target) <= tolerance) {
+          if (magnitudes[i] > peakMag) {
+            peakMag = magnitudes[i];
+          }
+        }
+      }
+
+      harmonics.push({
+        n,
+        freq: target,
+        magnitude: peakMag,
+        detectable: peakMag > detectThreshold
+      });
+    }
+
+    return harmonics;
+  }
+
+  /**
+   * 用中位数估计频谱噪声底
+   */
+  estimateNoiseFloor(magnitudes) {
+    if (!magnitudes || magnitudes.length === 0) return 0;
+    const sorted = [...magnitudes].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
   }
 }
